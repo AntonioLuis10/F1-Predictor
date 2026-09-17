@@ -1,8 +1,10 @@
 import streamlit as st
+import time
 import fastf1
 import pandas as pd
 import datetime
 import os
+
 
 # --- CONFIGURACIÓN DE LA PÁGINA WEB ---
 st.set_page_config(page_title="F1 Predictive Engine", page_icon="🏎️", layout="wide")
@@ -42,17 +44,34 @@ def analizar_datos(anio, gran_premio, formato):
         st.warning("⚠️ Fin de semana SPRINT. La FP1 cae a un coeficiente predictivo de C ≈ 0.18. El modelo estándar no es aplicable.")
         return None, None
 
-    try:
-        fp2 = fastf1.get_session(anio, gran_premio, 'FP2')
-        fp3 = fastf1.get_session(anio, gran_premio, 'FP3')
-        fp2.load(laps=True, telemetry=False, weather=False)
-        fp3.load(laps=True, telemetry=False, weather=False)
-        
-        # Forzamos la lectura de las vueltas aquí. Si están vacías, saltará al except y no romperá la web.
-        _ = fp2.laps
-        _ = fp3.laps
-    except Exception as e:
-        st.warning("⚠️ La telemetría de las prácticas libres (FP2/FP3) aún no está procesada por los servidores oficiales. Vuelve a intentarlo en unos minutos.")
+    # --- BUCLE DE CONEXIÓN RESILIENTE ---
+    max_reintentos = 3
+    datos_cargados = False
+    
+    for intento in range(max_reintentos):
+        try:
+            fp2 = fastf1.get_session(anio, gran_premio, 'FP2')
+            fp3 = fastf1.get_session(anio, gran_premio, 'FP3')
+            
+            # Descargamos solo los tiempos de vuelta para aligerar la carga en la nube
+            fp2.load(laps=True, telemetry=False, weather=False)
+            fp3.load(laps=True, telemetry=False, weather=False)
+            
+            # Forzamos la lectura de memoria. Si está vacía, saltará al except
+            _ = fp2.laps
+            _ = fp3.laps
+            
+            datos_cargados = True
+            break  # Éxito: salimos del bucle
+            
+        except Exception as e:
+            if intento < max_reintentos - 1:
+                time.sleep(3)  # Pausa de 3 segundos para que la API de F1 no nos bloquee
+            else:
+                pass
+                
+    if not datos_cargados:
+        st.warning("⚠️ La API oficial de F1 ha rechazado la conexión de la nube tras 3 intentos. Por favor, pulsa el botón de ejecutar de nuevo.")
         return None, None
 
     hay_qualy = False
