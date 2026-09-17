@@ -15,13 +15,24 @@ if not os.path.exists('f1_cache'):
 fastf1.Cache.enable_cache('f1_cache')
 
 # --- FUNCIONES BASE (Ocultas al usuario) ---
-@st.cache_data(ttl=3600) # La web guardará los datos 1 hora para no recargar lento
-def obtener_ultimo_gp_automatico():
+@st.cache_data(ttl=3600)
+def obtener_calendario_completado():
+    """Descarga la lista de todos los GPs disputados hasta la fecha actual."""
     hoy = datetime.datetime.now()
-    margen_fin_de_semana = hoy + datetime.timedelta(days=2)
     anio_actual = hoy.year
     calendario = fastf1.get_event_schedule(anio_actual)
+    
+    # Filtramos para mostrar solo las carreras que ya han empezado o terminado
+    margen_fin_de_semana = hoy + datetime.timedelta(days=2)
     eventos_pasados = calendario[calendario['EventDate'] <= margen_fin_de_semana]
+    
+    # Si estamos a principio de año y no hay carreras, cargamos el año anterior
+    if eventos_pasados.empty:
+        anio_actual -= 1
+        calendario = fastf1.get_event_schedule(anio_actual)
+        eventos_pasados = calendario
+        
+    return anio_actual, eventos_pasados
     
     anio_evento = anio_actual
     if eventos_pasados.empty:
@@ -164,24 +175,36 @@ def analizar_datos(anio, gran_premio, formato):
     return df_final, None
 
 # --- INTERFAZ VISUAL ---
+# --- INTERFAZ VISUAL ---
 st.title("🏎️ Panel Analítico de Fórmula 1")
 st.markdown("Proyección predictiva de rendimiento mediante telemetría en tiempo real.")
 
-with st.spinner('Conectando con la base de datos de telemetría...'):
-    anio, gp, formato = obtener_ultimo_gp_automatico()
-    
-st.subheader(f"📍 {gp} ({anio})")
+with st.spinner('Cargando calendario oficial...'):
+    anio, eventos = obtener_calendario_completado()
+
+# Creamos listas con los nombres y formatos para el menú desplegable
+nombres_gps = eventos['EventName'].tolist()
+formatos_gps = eventos['EventFormat'].tolist()
+diccionario_gps = dict(zip(nombres_gps, formatos_gps))
+
+# Selector manual en la web (Invertimos la lista para que el último GP salga primero)
+col1, col2 = st.columns([2, 1])
+with col1:
+    gp_seleccionado = st.selectbox("📅 Selecciona un Gran Premio:", reversed(nombres_gps))
+    formato_seleccionado = diccionario_gps[gp_seleccionado]
+
+st.subheader(f"📍 {gp_seleccionado} ({anio})")
 
 if st.button('Ejecutar Análisis Predictivo'):
-    with st.spinner('Procesando *Long Runs* y limpiando ruido telemétrico...'):
-        tabla, podio = analizar_datos(anio, gp, formato)
+    with st.spinner('Procesando Long Runs y limpiando ruido telemétrico...'):
+        tabla, podio = analizar_datos(anio, gp_seleccionado, formato_seleccionado)
         
         if tabla is not None:
             st.dataframe(tabla, use_container_width=True)
             
             if podio:
                 st.success("### 🤖 Predicción Automática del Podio")
-                col1, col2, col3 = st.columns(3)
-                col1.metric("🥇 Ganador", podio[0])
-                col2.metric("🥈 Segundo", podio[1])
-                col3.metric("🥉 Tercero", podio[2])
+                c1, c2, c3 = st.columns(3)
+                c1.metric("🥇 Ganador", podio[0])
+                c2.metric("🥈 Segundo", podio[1])
+                c3.metric("🥉 Tercero", podio[2])
