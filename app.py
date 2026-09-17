@@ -47,8 +47,12 @@ def analizar_datos(anio, gran_premio, formato):
         fp3 = fastf1.get_session(anio, gran_premio, 'FP3')
         fp2.load(laps=True, telemetry=False, weather=False)
         fp3.load(laps=True, telemetry=False, weather=False)
+        
+        # Forzamos la lectura de las vueltas aquí. Si están vacías, saltará al except y no romperá la web.
+        _ = fp2.laps
+        _ = fp3.laps
     except Exception as e:
-        st.error(f"❌ Error al cargar Libres: {e}")
+        st.warning("⚠️ La telemetría de las prácticas libres (FP2/FP3) aún no está procesada por los servidores oficiales. Vuelve a intentarlo en unos minutos.")
         return None, None
 
     hay_qualy = False
